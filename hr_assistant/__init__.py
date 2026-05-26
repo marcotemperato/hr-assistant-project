@@ -165,7 +165,7 @@ async def handle_message(message: cl.Message):
 
         nome_response = await asyncio.to_thread(
             ollama.chat,
-            model="llama3.2",
+            model="phi3",
             messages=[
                 {
                     "role": "user",
@@ -249,7 +249,7 @@ Nome candidato:
 
         response = await asyncio.to_thread(
             ollama.chat,
-            model="llama3.2",
+            model="phi3",
             messages=messages
         )
 
