@@ -5,25 +5,16 @@ from database import Database
 from config import Config
 from utils import LLMHelper
 
-
-# Process documents
-documents, metadatas, ids = DocumentProcessor.process_documents()
-
-# print("*" * 80)
-# print("Chucks, metadata e ids")
-# print("*" * 80)
-# print(documents, metadatas, ids)
-
-# Initialize database and add documents
 db = Database()
-db.add_documents(documents, metadatas, ids)
 
-# E' ancora inefficiente
-# perche' ricarica sempre tutto nel DB 
+# Process documents syncing folder to db
+added, updated, removed = DocumentProcessor.process_documents(db)
+print(f"Document sync complete: {added} added, {updated} updated, {removed} removed")
 
 
 @cl.on_chat_start
-def start():
+async def start():
+
     cl.user_session.set(
         "messages",
         [
@@ -45,49 +36,17 @@ async def handle_message(message: cl.Message):
 
     filename = results["metadatas"][0][0]["source"]
     context_lines = DocumentProcessor.read_first_lines(
-        os.path.join(Config.DOCUMENTS_DIR, filename), 10
+        os.path.join(Config.DOCUMENTS_DIR, filename), 200
     )
 
     context = f"CONTESTO: nome file {results['metadatas'][0][0]['source']} ecco il paragrafo piu' significativo: {results['documents'][0][0]}"
 
-    candidate_info = DocumentProcessor.extract_candidate_info(
-    "\n".join(context_lines)
-    )
+    candidate_name = await LLMHelper.get_candidate_name(context_lines) # TIP: riusciamo a eliminare questa chiamata aggiuntiva per il nome?
 
-    prompt = f"""
-    Domanda utente:
-    {user_question}
-
-    Candidato selezionato:
-
-    Nome: {candidate_info['name']}
-    Email: {candidate_info['email']}
-    Telefono: {candidate_info['phone']}
-
-    F  ile sorgente:
-    {filename}
-
-    Contesto CV:
-    {context}
-
-    IMPORTANTE:
-    - Devi SEMPRE mostrare:
-        - nome
-        - email
-        - telefono
-        - Devi spiegare perché il candidato è adatto.
-        - Non omettere mai email e telefono.
-        - Rispondi in italiano.
-    """
+    prompt = LLMHelper.create_prompt(context, user_question, candidate_name)
 
     messages = cl.user_session.get("messages", [])
     messages.append({"role": "user", "content": prompt})
-
-    # print("*" * 80)
-    # print("*" * 80)
-    # print("prompt", prompt)
-    # print("*" * 80)
-    # print("*" * 80)
 
     response_message = cl.Message(content="")
     await response_message.send()
@@ -96,11 +55,9 @@ async def handle_message(message: cl.Message):
         stream = LLMHelper.chat(messages)
 
         for chunk in stream:
-
-            token = chunk.choices[0].delta.content
-
-            if token:
-                await response_message.stream_token(token)
+            await response_message.stream_token(
+                str(chunk.choices[0].delta.content or "")
+            )
 
         messages.append({"role": "assistant", "content": response_message.content})
         await response_message.update()
