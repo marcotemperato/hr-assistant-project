@@ -50,9 +50,35 @@ async def handle_message(message: cl.Message):
 
     context = f"CONTESTO: nome file {results['metadatas'][0][0]['source']} ecco il paragrafo piu' significativo: {results['documents'][0][0]}"
 
-    candidate_name = await LLMHelper.get_candidate_name(context_lines)
+    candidate_info = DocumentProcessor.extract_candidate_info(
+    "\n".join(context_lines)
+    )
 
-    prompt = LLMHelper.create_prompt(context, user_question, candidate_name)
+    prompt = f"""
+    Domanda utente:
+    {user_question}
+
+    Candidato selezionato:
+
+    Nome: {candidate_info['name']}
+    Email: {candidate_info['email']}
+    Telefono: {candidate_info['phone']}
+
+    F  ile sorgente:
+    {filename}
+
+    Contesto CV:
+    {context}
+
+    IMPORTANTE:
+    - Devi SEMPRE mostrare:
+        - nome
+        - email
+        - telefono
+        - Devi spiegare perché il candidato è adatto.
+        - Non omettere mai email e telefono.
+        - Rispondi in italiano.
+    """
 
     messages = cl.user_session.get("messages", [])
     messages.append({"role": "user", "content": prompt})
@@ -70,7 +96,11 @@ async def handle_message(message: cl.Message):
         stream = LLMHelper.chat(messages)
 
         for chunk in stream:
-            await response_message.stream_token(str(chunk.choices[0].delta.content))
+
+            token = chunk.choices[0].delta.content
+
+            if token:
+                await response_message.stream_token(token)
 
         messages.append({"role": "assistant", "content": response_message.content})
         await response_message.update()
