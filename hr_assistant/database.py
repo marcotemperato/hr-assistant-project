@@ -11,10 +11,9 @@ class Database:
         )
 
         # Initialize persistent client
-        self.client = chromadb.PersistentClient(path=Config.PERSISTENT_DIR) #news
-        
+        self.client = chromadb.PersistentClient(path=Config.PERSISTENT_DIR)
         self.collection = self.client.get_or_create_collection(
-            name=Config.COLLECTION_NAME, embedding_function=self.openai_ef
+            name=Config.COLLECTION_NAME, embedding_function=self.openai_ef # TIP: forzare la distanza tra 0 e 1,metadata={"hnsw:space": "cosine"}
         )
 
     def add_documents(self, documents, metadatas, ids):
@@ -44,3 +43,14 @@ class Database:
         result = self.collection.get(where={"source": source})
         if result and result["ids"]:
             self.collection.delete(ids=result["ids"])
+
+    def get_stats(self):
+        result = self.collection.get()
+        valori_distinti = set(d["source"] for d in result["metadatas"]) # TIP: eliminazione dei duplicati!
+        numero_files = len(valori_distinti)
+        
+        return f"""
+            Nome Collezione: { self.collection.name}
+            Numero totale Frammenti: {  self.collection.count() }
+            Numero Files Elaborati: {numero_files}
+        """
