@@ -129,16 +129,42 @@ async def handle_message(message: cl.Message):
     metadata = results["metadatas"][0][0]
 
     filename = metadata["source"]
+    
+    context_lines = DocumentProcessor.read_first_lines(
+    os.path.join(Config.DOCUMENTS_DIR, filename),
+    80,
+    )
+
+    candidate_info = DocumentProcessor.extract_candidate_info(
+        "\n".join(context_lines)
+    )
 
     prompt = f"""
-CONTESTO:
-{best_document}
+        Sei un recruiter HR esperto.
 
-DOMANDA:
-{user_question}
+        IMPORTANTE:
+        - Devi SEMPRE indicare il nome del candidato.
+        - Se il nome non è disponibile usa il nome file.
+        - Devi spiegare perchè è adatto.
 
-Trova il candidato migliore e spiega perché.
-"""
+        NOME CANDIDATO:
+        {candidate_info.get('name', 'Non trovato')}
+
+        EMAIL:
+        {candidate_info.get('email', 'Non trovata')}
+
+        TELEFONO:
+        {candidate_info.get('phone', 'Non trovato')}
+
+        NOME FILE:
+        {filename}
+
+        CONTENUTO CV:
+        {best_document}
+
+        RICHIESTA:
+        {user_question}
+        """
 
     messages = cl.user_session.get("messages", [])
 
@@ -150,7 +176,9 @@ Trova il candidato migliore e spiega perché.
     )
 
     response_message = cl.Message(content="")
-
+    
+    response_message.content = f"📄 CV trovato: {filename}\n\n"
+    
     await response_message.send()
 
     try:

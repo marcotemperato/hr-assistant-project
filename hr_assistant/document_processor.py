@@ -4,6 +4,7 @@ import uuid
 import hashlib
 from datetime import datetime
 from config import Config
+from semantic_chunking import SemanticChunking
 
 
 class DocumentProcessor:
@@ -44,33 +45,76 @@ class DocumentProcessor:
 
     @staticmethod
     def process_single_document(file_path):
-        """Process a single document into chunks"""
+
         documents = []
         metadatas = []
         ids = []
 
-        with open(file_path, "r") as file:
-            chunks = file.read().replace("\n", ".").split("### ")
-            file_metadata = DocumentProcessor.get_document_metadata(file_path)
+        with open(file_path, "r", encoding="utf-8") as file:
+
+            text = file.read()
+
+            chunks = SemanticChunking.chunk_it(text)
+
+            file_metadata = DocumentProcessor.get_document_metadata(
+                file_path
+            )
 
             for chunk in chunks:
-                if not chunk.isspace() and not chunk == "":
+
+                if chunk and not chunk.isspace():
+
                     documents.append(chunk)
+
                     metadatas.append(file_metadata)
+
                     ids.append(str(uuid.uuid4()))
 
         return documents, metadatas, ids
-    
-    @staticmethod   
+        
+    @staticmethod
     def extract_candidate_info(text):
 
         lines = text.split("\n")
 
-        return {
-            "name": lines[0] if len(lines) > 0 else "Non trovato",
-            "email": "non_disponibile@email.com",
-            "phone": "Non disponibile",
+        candidate = {
+            "name": "Non trovato",
+            "email": "Non trovata",
+            "phone": "Non trovato",
         }
+
+        for line in lines:
+
+            clean_line = line.strip()
+
+            lower = clean_line.lower()
+
+            # Nome
+            if (
+                lower.startswith("nome:")
+                or lower.startswith("name:")
+            ):
+
+                candidate["name"] = clean_line.split(
+                    ":",
+                    1
+                )[1].strip()
+
+            # Email
+            if "@" in clean_line:
+
+                candidate["email"] = clean_line
+
+            # Telefono
+            if (
+                "telefono" in lower
+                or "phone" in lower
+                or "+39" in clean_line
+            ):
+
+                candidate["phone"] = clean_line
+
+        return candidate
         
     @staticmethod
     def process_documents(db):
