@@ -3,6 +3,8 @@ import os
 import uuid
 import hashlib
 from datetime import datetime
+
+from numpy.ma import ids
 from config import Config
 from semantic_chunking import SemanticChunking
 
@@ -54,13 +56,15 @@ class DocumentProcessor:
 
             text = file.read()
 
-            chunks = SemanticChunking.chunk_it(text)
+            sc = SemanticChunking()
+
+            chunks = sc.chunk_text(text)
 
             file_metadata = DocumentProcessor.get_document_metadata(
-                file_path
+            file_path
             )
 
-            for chunk in chunks:
+        for chunk in chunks:
 
                 if chunk and not chunk.isspace():
 
@@ -71,6 +75,8 @@ class DocumentProcessor:
                     ids.append(str(uuid.uuid4()))
 
         return documents, metadatas, ids
+
+
         
     @staticmethod
     def extract_candidate_info(text):

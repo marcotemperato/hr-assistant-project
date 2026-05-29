@@ -2,139 +2,113 @@ import re
 import numpy as np
 
 from sklearn.metrics.pairwise import cosine_similarity
-from config import Config
 from openai import OpenAI
 
-
-client = OpenAI(api_key=Config.OPENAI_KEY)
+from config import Config
 
 
 class SemanticChunking:
 
-    @staticmethod
-    def calculate_cosine_distances(sentences):
+    def __init__(self, breakpoint_percentile=95, buffer_size=1):
 
-        distances = []
+        self.client = OpenAI(
+            api_key=Config.OPENAI_KEY
+        )
 
-        for i in range(len(sentences) - 1):
+        self.breakpoint_percentile = breakpoint_percentile
+        self.buffer_size = buffer_size
 
-            embedding_current = sentences[i]["combined_sentence_embedding"]
+    def _process_sentences(self, text):
 
-            embedding_next = sentences[i + 1]["combined_sentence_embedding"]
+        sentences = [
+            {
+                "sentence": s,
+                "index": i
+            }
+            for i, s in enumerate(
+                re.split(r"(?<=[.?!])\s+", text)
+            )
+        ]
 
-            similarity = cosine_similarity(
-                [embedding_current],
-                [embedding_next]
-            )[0][0]
+        for i, current in enumerate(sentences):
 
-            distance = 1 - similarity
+            context_range = range(
+                max(0, i - self.buffer_size),
+                min(len(sentences), i + self.buffer_size + 1),
+            )
 
-            distances.append(distance)
-
-            sentences[i]["distance_to_next"] = distance
-
-        return distances, sentences
-
-    @staticmethod
-    def combine_sentences(sentences, buffer_size=1):
-
-        for i in range(len(sentences)):
-
-            combined_sentence = ""
-
-            for j in range(i - buffer_size, i):
-
-                if j >= 0:
-
-                    combined_sentence += sentences[j]["sentence"] + " "
-
-            combined_sentence += sentences[i]["sentence"]
-
-            for j in range(i + 1, i + 1 + buffer_size):
-
-                if j < len(sentences):
-
-                    combined_sentence += " " + sentences[j]["sentence"]
-
-            sentences[i]["combined_sentence"] = combined_sentence
+            current["combined_sentence"] = " ".join(
+                sentences[j]["sentence"]
+                for j in context_range
+            )
 
         return sentences
 
-    @staticmethod
-    def get_embeddings(texts):
+    def _get_embeddings(self, texts):
 
-        response = client.embeddings.create(
+        response = self.client.embeddings.create(
             model="text-embedding-3-small",
             input=texts
         )
 
         return [item.embedding for item in response.data]
 
-    @staticmethod
-    def chunk_it(txt):
+    def _calculate_distances(self, sentences):
 
-        single_sentences_list = re.split(
-            r"(?<=[.?!])\s+",
-            txt
+        embeddings = self._get_embeddings(
+            [s["combined_sentence"] for s in sentences]
         )
 
-        sentences = [
-            {"sentence": x, "index": i}
-            for i, x in enumerate(single_sentences_list)
-            if x.strip()
-        ]
+        distances = []
 
-        sentences = SemanticChunking.combine_sentences(sentences)
+        for i in range(len(sentences) - 1):
 
-        embeddings = SemanticChunking.get_embeddings(
-            [x["combined_sentence"] for x in sentences]
-        )
+            distance = 1 - cosine_similarity(
+                [embeddings[i]],
+                [embeddings[i + 1]]
+            )[0][0]
 
-        for i, sentence in enumerate(sentences):
+            distances.append(distance)
 
-            sentence["combined_sentence_embedding"] = embeddings[i]
+        return distances
 
-        distances, sentences = (
-            SemanticChunking.calculate_cosine_distances(sentences)
-        )
+    def chunk_text(self, text):
 
-        breakpoint_percentile_threshold = 95
+        sentences = self._process_sentences(text)
 
-        breakpoint_distance_threshold = np.percentile(
+        print("SENTENCES:", sentences[:2])
+
+        distances = self._calculate_distances(sentences)
+
+        print("DISTANCES:", distances[:2])
+
+        threshold = np.percentile(
             distances,
-            breakpoint_percentile_threshold
+            self.breakpoint_percentile
         )
 
-        indices_above_thresh = [
-            i
-            for i, x in enumerate(distances)
-            if x > breakpoint_distance_threshold
+        split_points = [
+            i for i, d in enumerate(distances)
+            if d > threshold
         ]
 
-        start_index = 0
+        print("SPLIT POINTS:", split_points)
 
         chunks = []
 
-        for index in indices_above_thresh:
+        start = 0
 
-            end_index = index
+        for point in split_points + [len(sentences) - 1]:
 
-            group = sentences[start_index : end_index + 1]
-
-            combined_text = " ".join(
-                [d["sentence"] for d in group]
+            chunk = " ".join(
+                s["sentence"]
+                for s in sentences[start: point + 1]
             )
 
-            chunks.append(combined_text)
+            print("CHUNK:", chunk[:100])
 
-            start_index = index + 1
+            chunks.append(chunk)
 
-        if start_index < len(sentences):
-
-            combined_text = " ".join(
-                [d["sentence"] for d in sentences[start_index:]]
-            )
-
-            chunks.append(combined_text)
+            start = point + 1
 
         return chunks
