@@ -1,4 +1,5 @@
 import os
+import shutil
 import chainlit as cl
 
 from document_processor import DocumentProcessor
@@ -16,6 +17,41 @@ print(
     f"{updated} updated, "
     f"{removed} removed"
 )
+
+async def upload_file(file):
+
+    os.makedirs(
+        Config.DOCUMENTS_DIR,
+        exist_ok=True
+    )
+
+    destination = os.path.join(
+        Config.DOCUMENTS_DIR,
+        file.name
+    )
+
+    shutil.copy(
+        file.path,
+        destination
+    )
+
+    documents, metadatas, ids = (
+        DocumentProcessor.process_single_document(
+            destination
+        )
+    )
+
+    if documents:
+
+        db.add_documents(
+            documents,
+            metadatas,
+            ids
+        )
+
+        return f"✅ {file.name} indicizzato"
+
+    return f"❌ Errore elaborazione {file.name}"
 
 
 @cl.on_chat_start
@@ -47,7 +83,13 @@ Rispondi in modo sintetico e professionale.
             payload={"action": "count_cv"},
             label="📊 Conta CV",
         ),
+        cl.Action(
+            name="reset_db",
+            payload={"action": "reset_db"},
+            label="🗑️ Svuota Database",
+        ),
     ]
+    
 
     await cl.Message(
         content="✅ HR Assistant avviato correttamente.",
@@ -105,10 +147,35 @@ async def count_cv(action):
     await cl.Message(
         content=f"📊 CV presenti nel database: {len(unique_documents)}"
     ).send()
+    
+@cl.action_callback("reset_db")
+async def reset_db(action):
+
+    db.reset_database()
+
+    await cl.Message(
+        content="✅ Database svuotato correttamente."
+    ).send()
 
 
 @cl.on_message
 async def handle_message(message: cl.Message):
+    
+    if message.elements:
+
+        results = []
+
+        for file in message.elements:
+
+            result = await upload_file(file)
+
+            results.append(result)
+
+        await cl.Message(
+            content="\n".join(results)
+        ).send()
+
+        return
 
     user_question = message.content
 

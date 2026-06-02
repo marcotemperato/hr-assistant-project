@@ -21,6 +21,25 @@ class Database:
 
     def query(self, query_text, n_results=1):
         return self.collection.query(query_texts=[query_text], n_results=n_results)
+    
+    def reset_database(self):
+
+        self.client.delete_collection(
+            Config.COLLECTION_NAME
+        )
+
+        self.collection = self.client.get_or_create_collection(
+            name=Config.COLLECTION_NAME,
+            embedding_function=self.openai_ef
+        )
+    
+    def delete_collection(self):
+        self.client.delete_collection(Config.COLLECTION_NAME)
+
+        self.collection = self.client.get_or_create_collection(
+            name=Config.COLLECTION_NAME,
+            embedding_function=self.openai_ef
+        )
 
     def get_tracked_files(self):
         """Get all unique files and their metadata from the database"""
