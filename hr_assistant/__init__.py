@@ -58,52 +58,52 @@ Rispondi in modo sintetico e professionale.
 @cl.action_callback("show_db")
 async def show_db(action):
 
-    files = [
-        f
-        for f in os.listdir(Config.DOCUMENTS_DIR)
-        if f.endswith(".txt")
-    ]
+    results = db.collection.get(
+        include=["metadatas"]
+    )
 
-    if not files:
+    unique_docs = {}
 
-        await cl.Message(
-            content="❌ Nessun CV trovato."
-        ).send()
+    for metadata in results["metadatas"]:
 
-        return
+        source = metadata.get("source")
 
-    response = "📂 DOCUMENTI NEL DATABASE:\n\n"
+        extension = metadata.get("extension")
 
-    for index, filename in enumerate(files, start=1):
+        unique_docs[source] = extension
 
-        file_path = os.path.join(
-            Config.DOCUMENTS_DIR,
-            filename,
+    response = (
+        f"📂 DOCUMENTI NEL DATABASE "
+        f"({len(unique_docs)}):\n\n"
+    )
+
+    for source, extension in sorted(
+        unique_docs.items()
+    ):
+
+        response += (
+            f"{source} ({extension})\n"
         )
 
-        lines = DocumentProcessor.read_first_lines(
-            file_path,
-            3,
-        )
-
-        preview = " ".join(lines)
-
-        response += f"{index}. {preview}\n\n"
-
-    await cl.Message(content=response).send()
+    await cl.Message(
+        content=response
+    ).send()
 
 
 @cl.action_callback("count_cv")
 async def count_cv(action):
 
-    files = [
-        f
-        for f in os.listdir(Config.DOCUMENTS_DIR)
-        if f.endswith(".txt")
-    ]
+    results = db.collection.get(
+        include=["metadatas"]
+    )
+
+    unique_documents = {
+        metadata["source"]
+        for metadata in results["metadatas"]
+    }
 
     await cl.Message(
-        content=f"📊 CV presenti nel database: {len(files)}"
+        content=f"📊 CV presenti nel database: {len(unique_documents)}"
     ).send()
 
 

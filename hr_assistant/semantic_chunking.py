@@ -78,9 +78,15 @@ class SemanticChunking:
 
         print("SENTENCES:", sentences[:2])
 
+        if len(sentences) <= 1:
+            return [text]
+
         distances = self._calculate_distances(sentences)
 
         print("DISTANCES:", distances[:2])
+
+        if not distances:
+            return [text]
 
         threshold = np.percentile(
             distances,
