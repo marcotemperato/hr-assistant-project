@@ -1,0 +1,15 @@
+.step .bg-accent .message-content {
+    color: rgb(238, 244, 248);
+}
+
+#chat-input.empty:before {
+    color: white !important;
+}
+
+.bg-primary {
+    background-color: #000000 !important;
+}
+
+.empty\:before\:text-muted-foreground:empty:before {
+    color: rgba(119, 119, 118, 0.96) !important;
+}

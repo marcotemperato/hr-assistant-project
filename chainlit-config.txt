@@ -1,0 +1,14 @@
+[theme]
+# Light theme colors
+light.primary = "#FFD700"  # Yellow accent color
+light.background = "#F5F5F5"  # Light gray background
+
+# Dark theme colors
+dark.primary = "#FFD700"  # Yellow accent color
+dark.background = "#1a237e"  # Dark blue background
+
+# Chat settings
+[ui]
+name = "HR Assistant"
+description = "Your HR specialized assistant"
+hide_cot = false
