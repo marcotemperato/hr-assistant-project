@@ -1,6 +1,7 @@
 # document_processor.py
 
 import os
+import re
 import uuid
 import hashlib
 import tempfile
@@ -11,6 +12,26 @@ from zipfile import ZipFile
 
 from config import Config
 from semantic_chunking import SemanticChunking
+
+EMAIL_PATTERN = re.compile(
+    r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+)
+PHONE_PATTERN = re.compile(
+    r"(?:\+39[\s.-]?)?(?:3\d{2}[\s.-]?\d{6,7}|0\d{1,4}[\s.-]?\d{6,8})"
+)
+NAME_SKIP_KEYWORDS = {
+    "profilo",
+    "esperienza",
+    "competenze",
+    "curriculum",
+    "email",
+    "telefono",
+    "vitae",
+    "resume",
+    "cv",
+    "indirizzo",
+    "address",
+}
 
 
 class DocumentProcessor:
@@ -33,24 +54,20 @@ class DocumentProcessor:
     }
 
     @staticmethod
-    def read_first_lines(file_path, n_lines=100):
+    def get_cv_text(file_path):
+        extension = os.path.splitext(file_path)[1].lower()
+        file_type = DocumentProcessor.SUPPORTED_EXTENSIONS.get(extension)
 
-        try:
+        if not file_type:
+            return ""
 
-            with open(
-                file_path,
-                "r",
-                encoding="utf-8"
-            ) as file:
+        if file_type == "archive":
+            parts = []
+            for filename, content in DocumentProcessor._process_zip_file(file_path):
+                parts.append(f"File: {filename}\n{content}")
+            return "\n\n".join(parts)
 
-                return [
-                    line.strip()
-                    for line, _ in zip(file, range(n_lines))
-                ]
-
-        except Exception:
-
-            return []
+        return DocumentProcessor._convert_to_markdown(file_path)
 
     @staticmethod
     def get_file_hash(file_path):
@@ -108,12 +125,7 @@ class DocumentProcessor:
 
             return result.text_content
 
-        except Exception as e:
-
-            print(
-                f"Errore conversione {file_path}: {e}"
-            )
-
+        except Exception:
             return ""
 
     @staticmethod
@@ -229,15 +241,16 @@ class DocumentProcessor:
             )
         )
 
-        for chunk in chunks:
+        for chunk_index, chunk in enumerate(chunks):
 
             if chunk and not chunk.isspace():
 
                 documents.append(chunk)
 
-                metadatas.append(
-                    file_metadata
-                )
+                metadata = dict(file_metadata)
+                metadata["chunk_index"] = chunk_index
+
+                metadatas.append(metadata)
 
                 ids.append(
                     str(uuid.uuid4())
@@ -246,40 +259,57 @@ class DocumentProcessor:
         return documents, metadatas, ids
 
     @staticmethod
+    def _normalize_phone(raw_phone):
+        digits = re.sub(r"\D", "", raw_phone)
+        if digits.startswith("39") and len(digits) > 10:
+            digits = digits[2:]
+        return digits if digits else None
+
+    @staticmethod
     def extract_candidate_info(document):
 
-        lines = document.split("\n")
+        email_match = EMAIL_PATTERN.search(document)
+        email = email_match.group(0) if email_match else None
 
-        candidate_name = "Candidato"
+        phone_match = PHONE_PATTERN.search(document)
+        phone = (
+            DocumentProcessor._normalize_phone(phone_match.group(0))
+            if phone_match
+            else None
+        )
 
-        for line in lines:
+        candidate_name = None
 
+        for line in document.split("\n"):
             line = line.strip()
+            if not line or len(line) < 3 or len(line) > 60:
+                continue
+            if EMAIL_PATTERN.search(line) or PHONE_PATTERN.search(line):
+                continue
+            lower = line.lower()
+            if any(keyword in lower for keyword in NAME_SKIP_KEYWORDS):
+                continue
+            if line.startswith(("#", "-", "*", "|")):
+                continue
+            candidate_name = line
+            break
 
-            if len(line) > 3 and len(line) < 50:
-
-                if not any(
-                    word in line.lower()
-                    for word in [
-                        "profilo",
-                        "esperienza",
-                        "competenze",
-                        "curriculum",
-                        "email",
-                        "telefono",
-                    ]
-                ):
-
-                    candidate_name = line
-
-                    break
+        if not candidate_name and email:
+            local_part = email.split("@")[0].replace(".", " ").replace("_", " ")
+            candidate_name = local_part.title()
 
         return {
-            "name": candidate_name
+            "name": candidate_name or "Candidato",
+            "email": email,
+            "phone": phone,
         }
 
     @staticmethod
     def process_documents(db):
+
+        if not os.path.isdir(Config.DOCUMENTS_DIR):
+            os.makedirs(Config.DOCUMENTS_DIR, exist_ok=True)
+            return (0, 0, 0)
 
         current_files = {
 

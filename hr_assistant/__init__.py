@@ -9,14 +9,6 @@ from utils import LLMHelper
 
 db = Database()
 
-added, updated, removed = DocumentProcessor.process_documents(db)
-
-print(
-    f"Document sync complete: "
-    f"{added} added, "
-    f"{updated} updated, "
-    f"{removed} removed"
-)
 
 async def upload_file(file):
 
@@ -57,6 +49,14 @@ async def upload_file(file):
 @cl.on_chat_start
 async def start():
 
+    added, updated, removed = DocumentProcessor.process_documents(db)
+    sync_summary = ""
+    if any((added, updated, removed)):
+        sync_summary = (
+            f"\n\n📁 Sync CV: {added} aggiunti, "
+            f"{updated} aggiornati, {removed} rimossi."
+        )
+
     cl.user_session.set(
         "messages",
         [
@@ -89,10 +89,9 @@ Rispondi in modo sintetico e professionale.
             label="🗑️ Svuota Database",
         ),
     ]
-    
 
     await cl.Message(
-        content="✅ HR Assistant avviato correttamente.",
+        content=f"✅ HR Assistant avviato correttamente.{sync_summary}",
         actions=actions,
     ).send()
 
@@ -147,7 +146,8 @@ async def count_cv(action):
     await cl.Message(
         content=f"📊 CV presenti nel database: {len(unique_documents)}"
     ).send()
-    
+
+
 @cl.action_callback("reset_db")
 async def reset_db(action):
 
@@ -160,7 +160,7 @@ async def reset_db(action):
 
 @cl.on_message
 async def handle_message(message: cl.Message):
-    
+
     if message.elements:
 
         results = []
@@ -179,11 +179,9 @@ async def handle_message(message: cl.Message):
 
     user_question = message.content
 
-    results = db.query(user_question)
+    match = db.query_best_cv_chunks(user_question)
 
-    print("RESULT DB:", results)
-
-    if not results["documents"][0]:
+    if not match["chunks"]:
 
         await cl.Message(
             content="❌ Nessun candidato trovato."
@@ -191,19 +189,13 @@ async def handle_message(message: cl.Message):
 
         return
 
-    best_document = results["documents"][0][0]
-
-    metadata = results["metadatas"][0][0]
-
-    filename = metadata["source"]
-    
-    context_lines = DocumentProcessor.read_first_lines(
-    os.path.join(Config.DOCUMENTS_DIR, filename),
-    80,
+    filename = match["source"]
+    cv_text = DocumentProcessor.get_cv_text(
+        os.path.join(Config.DOCUMENTS_DIR, filename)
     )
 
     candidate_info = DocumentProcessor.extract_candidate_info(
-        "\n".join(context_lines)
+        cv_text or match["combined_text"]
     )
 
     prompt = f"""
@@ -213,21 +205,22 @@ async def handle_message(message: cl.Message):
         - Devi SEMPRE indicare il nome del candidato.
         - Se il nome non è disponibile usa il nome file.
         - Devi spiegare perchè è adatto.
+        - Includi email e telefono quando disponibili.
 
         NOME CANDIDATO:
         {candidate_info.get('name', 'Non trovato')}
 
         EMAIL:
-        {candidate_info.get('email', 'Non trovata')}
+        {candidate_info.get('email') or 'Non trovata'}
 
         TELEFONO:
-        {candidate_info.get('phone', 'Non trovato')}
+        {candidate_info.get('phone') or 'Non trovato'}
 
         NOME FILE:
         {filename}
 
         CONTENUTO CV:
-        {best_document}
+        {match['combined_text']}
 
         RICHIESTA:
         {user_question}
@@ -243,9 +236,12 @@ async def handle_message(message: cl.Message):
     )
 
     response_message = cl.Message(content="")
-    
-    response_message.content = f"📄 CV trovato: {filename}\n\n"
-    
+
+    response_message.content = (
+        f"📄 CV trovato: {filename} "
+        f"({len(match['chunks'])} sezioni)\n\n"
+    )
+
     await response_message.send()
 
     try:
@@ -272,8 +268,6 @@ async def handle_message(message: cl.Message):
     except Exception as e:
 
         error_message = f"❌ Errore: {str(e)}"
-
-        print(error_message)
 
         await cl.Message(
             content=error_message

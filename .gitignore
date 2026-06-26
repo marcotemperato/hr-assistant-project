@@ -9,6 +9,7 @@ __pycache__/
 .env
 
 # Chroma DB
+data/chromadb/
 chroma_db/
 
 # Chainlit files

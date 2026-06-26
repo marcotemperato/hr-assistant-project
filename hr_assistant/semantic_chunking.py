@@ -76,14 +76,10 @@ class SemanticChunking:
 
         sentences = self._process_sentences(text)
 
-        print("SENTENCES:", sentences[:2])
-
         if len(sentences) <= 1:
             return [text]
 
         distances = self._calculate_distances(sentences)
-
-        print("DISTANCES:", distances[:2])
 
         if not distances:
             return [text]
@@ -98,8 +94,6 @@ class SemanticChunking:
             if d > threshold
         ]
 
-        print("SPLIT POINTS:", split_points)
-
         chunks = []
 
         start = 0
@@ -110,8 +104,6 @@ class SemanticChunking:
                 s["sentence"]
                 for s in sentences[start: point + 1]
             )
-
-            print("CHUNK:", chunk[:100])
 
             chunks.append(chunk)
 

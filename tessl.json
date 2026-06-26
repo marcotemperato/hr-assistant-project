@@ -1,0 +1,12 @@
+{
+  "name": "hr_assistant_project",
+  "mode": "vendored",
+  "dependencies": {
+    "tessl-labs/spec-driven-development": {
+      "version": "2.0.1"
+    },
+    "vibe-ai/spec-as-source": {
+      "version": "1.8.0"
+    }
+  }
+}

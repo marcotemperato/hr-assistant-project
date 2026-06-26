@@ -10,10 +10,9 @@ class Database:
             api_key=Config.OPENAI_KEY, model_name=Config.MODEL_NAME
         )
 
-        # Initialize persistent client
         self.client = chromadb.PersistentClient(path=Config.PERSISTENT_DIR)
         self.collection = self.client.get_or_create_collection(
-            name=Config.COLLECTION_NAME, embedding_function=self.openai_ef # TIP: forzare la distanza tra 0 e 1,metadata={"hnsw:space": "cosine"}
+            name=Config.COLLECTION_NAME, embedding_function=self.openai_ef
         )
 
     def add_documents(self, documents, metadatas, ids):
@@ -21,24 +20,61 @@ class Database:
 
     def query(self, query_text, n_results=1):
         return self.collection.query(query_texts=[query_text], n_results=n_results)
-    
+
+    def query_best_cv_chunks(self, query_text):
+        initial = self.collection.query(
+            query_texts=[query_text],
+            n_results=1,
+        )
+
+        if not initial["documents"] or not initial["documents"][0]:
+            return {
+                "source": None,
+                "chunks": [],
+                "combined_text": "",
+                "metadata": None,
+            }
+
+        best_metadata = initial["metadatas"][0][0]
+        source = best_metadata["source"]
+
+        result = self.collection.get(
+            where={"source": source},
+            include=["documents", "metadatas"],
+        )
+
+        if not result["documents"]:
+            return {
+                "source": source,
+                "chunks": [],
+                "combined_text": "",
+                "metadata": best_metadata,
+            }
+
+        items = list(
+            zip(
+                result["documents"],
+                result["metadatas"],
+            )
+        )
+        items.sort(key=lambda item: item[1].get("chunk_index", 0))
+
+        chunks = [document for document, _ in items]
+        combined_text = "\n\n".join(chunks)
+
+        return {
+            "source": source,
+            "chunks": chunks,
+            "combined_text": combined_text,
+            "metadata": best_metadata,
+        }
+
     def reset_database(self):
-
-        self.client.delete_collection(
-            Config.COLLECTION_NAME
-        )
-
-        self.collection = self.client.get_or_create_collection(
-            name=Config.COLLECTION_NAME,
-            embedding_function=self.openai_ef
-        )
-    
-    def delete_collection(self):
         self.client.delete_collection(Config.COLLECTION_NAME)
 
         self.collection = self.client.get_or_create_collection(
             name=Config.COLLECTION_NAME,
-            embedding_function=self.openai_ef
+            embedding_function=self.openai_ef,
         )
 
     def get_tracked_files(self):
@@ -65,11 +101,10 @@ class Database:
 
     def get_stats(self):
         result = self.collection.get()
-        valori_distinti = set(d["source"] for d in result["metadatas"]) # TIP: eliminazione dei duplicati!
-        numero_files = len(valori_distinti)
-        
+        unique_sources = {metadata["source"] for metadata in result["metadatas"]}
+
         return f"""
-            Nome Collezione: { self.collection.name}
-            Numero totale Frammenti: {  self.collection.count() }
-            Numero Files Elaborati: {numero_files}
+            Nome Collezione: {self.collection.name}
+            Numero totale Frammenti: {self.collection.count()}
+            Numero Files Elaborati: {len(unique_sources)}
         """
