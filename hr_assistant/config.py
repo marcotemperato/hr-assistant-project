@@ -24,17 +24,14 @@ class Config:
     LLM_MODEL = "gpt-4o"
     LLM_MODEL_LOW = "gpt-4o-mini"
     AI_API_URL = "https://api.openai.com/v1/"
-    AI_API_KEY = os.getenv("AI_API_KEY")
+    AI_API_KEY = os.getenv("AI_API_KEY") or os.getenv("OPENAI_API_KEY")
 
     @classmethod
     def validate_api_keys(cls):
         missing = []
         invalid = []
 
-        for name, value in (
-            ("OPENAI_API_KEY", cls.OPENAI_KEY),
-            ("AI_API_KEY", cls.AI_API_KEY),
-        ):
+        for name, value in (("OPENAI_API_KEY", cls.OPENAI_KEY),):
             if not value or not value.strip():
                 missing.append(name)
                 continue
@@ -49,7 +46,7 @@ class Config:
             if invalid:
                 details.append(f"placeholder in .env: {', '.join(invalid)}")
             raise ValueError(
-                "Configura le API key in .env (" + "; ".join(details) + "). "
-                "Copia .env.example e inserisci chiavi valide da "
+                "Configura OPENAI_API_KEY in .env (" + "; ".join(details) + "). "
+                "Ottieni una chiave valida da "
                 "https://platform.openai.com/account/api-keys"
             )

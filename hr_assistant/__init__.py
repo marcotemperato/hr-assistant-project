@@ -218,7 +218,7 @@ async def handle_message(message: cl.Message):
             await cl.Message(
                 content=(
                     "❌ API key OpenAI non valida. "
-                    "Controlla OPENAI_API_KEY e AI_API_KEY in .env."
+                    "Controlla OPENAI_API_KEY in .env."
                 )
             ).send()
             return

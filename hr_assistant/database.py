@@ -70,7 +70,7 @@ class Database:
             include=["metadatas", "distances"],
         )
 
-        if not initial["documents"] or not initial["documents"][0]:
+        if not initial["metadatas"] or not initial["metadatas"][0]:
             return self._empty_match()
 
         best_source, best_metadata, best_score = self._pick_best_source(
