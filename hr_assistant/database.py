@@ -21,52 +21,89 @@ class Database:
     def query(self, query_text, n_results=1):
         return self.collection.query(query_texts=[query_text], n_results=n_results)
 
+    def _empty_match(self):
+        return {
+            "source": None,
+            "chunks": [],
+            "combined_text": "",
+            "metadata": None,
+            "score": None,
+        }
+
+    def _pick_best_source(self, metadatas, distances):
+        source_stats = {}
+
+        for metadata, distance in zip(metadatas, distances):
+            source = metadata["source"]
+            stats = source_stats.setdefault(
+                source,
+                {"best_distance": distance, "hits": 0, "metadata": metadata},
+            )
+            stats["hits"] += 1
+            if distance < stats["best_distance"]:
+                stats["best_distance"] = distance
+                stats["metadata"] = metadata
+
+        best_source = min(
+            source_stats,
+            key=lambda source: (
+                source_stats[source]["best_distance"],
+                -source_stats[source]["hits"],
+            ),
+        )
+
+        return (
+            best_source,
+            source_stats[best_source]["metadata"],
+            source_stats[best_source]["best_distance"],
+        )
+
     def query_best_cv_chunks(self, query_text):
+        total_chunks = self.collection.count()
+        if total_chunks == 0:
+            return self._empty_match()
+
+        n_results = min(total_chunks, 30)
         initial = self.collection.query(
             query_texts=[query_text],
-            n_results=1,
+            n_results=n_results,
+            include=["metadatas", "distances"],
         )
 
         if not initial["documents"] or not initial["documents"][0]:
-            return {
-                "source": None,
-                "chunks": [],
-                "combined_text": "",
-                "metadata": None,
-            }
+            return self._empty_match()
 
-        best_metadata = initial["metadatas"][0][0]
-        source = best_metadata["source"]
+        best_source, best_metadata, best_score = self._pick_best_source(
+            initial["metadatas"][0],
+            initial["distances"][0],
+        )
 
         result = self.collection.get(
-            where={"source": source},
+            where={"source": best_source},
             include=["documents", "metadatas"],
         )
 
         if not result["documents"]:
             return {
-                "source": source,
+                "source": best_source,
                 "chunks": [],
                 "combined_text": "",
                 "metadata": best_metadata,
+                "score": best_score,
             }
 
-        items = list(
-            zip(
-                result["documents"],
-                result["metadatas"],
-            )
-        )
+        items = list(zip(result["documents"], result["metadatas"]))
         items.sort(key=lambda item: item[1].get("chunk_index", 0))
 
         chunks = [document for document, _ in items]
         combined_text = "\n\n".join(chunks)
 
         return {
-            "source": source,
+            "source": best_source,
             "chunks": chunks,
             "combined_text": combined_text,
             "metadata": best_metadata,
+            "score": best_score,
         }
 
     def reset_database(self):

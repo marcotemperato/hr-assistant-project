@@ -10,5 +10,8 @@ class LLMHelper:
     @staticmethod
     def chat(messages):
         return client.chat.completions.create(
-            model=Config.LLM_MODEL, messages=messages, stream=True
+            model=Config.LLM_MODEL,
+            messages=messages,
+            stream=True,
+            temperature=0.2,
         )

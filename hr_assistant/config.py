@@ -4,6 +4,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+PLACEHOLDER_KEY_MARKERS = ("sk-your", "your-openai", "changeme")
+
+
 class Config:
     DOCUMENTS_DIR = "resumes"
     COLLECTION_NAME = "CVs"
@@ -22,3 +25,31 @@ class Config:
     LLM_MODEL_LOW = "gpt-4o-mini"
     AI_API_URL = "https://api.openai.com/v1/"
     AI_API_KEY = os.getenv("AI_API_KEY")
+
+    @classmethod
+    def validate_api_keys(cls):
+        missing = []
+        invalid = []
+
+        for name, value in (
+            ("OPENAI_API_KEY", cls.OPENAI_KEY),
+            ("AI_API_KEY", cls.AI_API_KEY),
+        ):
+            if not value or not value.strip():
+                missing.append(name)
+                continue
+            lowered = value.lower()
+            if any(marker in lowered for marker in PLACEHOLDER_KEY_MARKERS):
+                invalid.append(name)
+
+        if missing or invalid:
+            details = []
+            if missing:
+                details.append(f"mancanti: {', '.join(missing)}")
+            if invalid:
+                details.append(f"placeholder in .env: {', '.join(invalid)}")
+            raise ValueError(
+                "Configura le API key in .env (" + "; ".join(details) + "). "
+                "Copia .env.example e inserisci chiavi valide da "
+                "https://platform.openai.com/account/api-keys"
+            )
