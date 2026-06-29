@@ -38,6 +38,7 @@ class DocumentProcessor:
 
     SUPPORTED_EXTENSIONS = {
         ".txt": "text",
+        ".md": "text",
         ".pdf": "document",
         ".doc": "document",
         ".docx": "document",
@@ -305,30 +306,40 @@ class DocumentProcessor:
         }
 
     @staticmethod
+    def list_cv_filenames():
+        if not os.path.isdir(Config.DOCUMENTS_DIR):
+            return [], []
+
+        supported = []
+        skipped = []
+
+        for filename in sorted(os.listdir(Config.DOCUMENTS_DIR)):
+            file_path = os.path.join(Config.DOCUMENTS_DIR, filename)
+            if not os.path.isfile(file_path):
+                continue
+
+            extension = os.path.splitext(filename)[1].lower()
+            if extension in DocumentProcessor.SUPPORTED_EXTENSIONS:
+                supported.append(filename)
+            else:
+                skipped.append(filename)
+
+        return supported, skipped
+
+    @staticmethod
     def process_documents(db):
 
         if not os.path.isdir(Config.DOCUMENTS_DIR):
             os.makedirs(Config.DOCUMENTS_DIR, exist_ok=True)
             return (0, 0, 0)
 
+        supported_filenames, _ = DocumentProcessor.list_cv_filenames()
+
         current_files = {
-
-            f: DocumentProcessor.get_document_metadata(
-                os.path.join(
-                    Config.DOCUMENTS_DIR,
-                    f
-                )
+            filename: DocumentProcessor.get_document_metadata(
+                os.path.join(Config.DOCUMENTS_DIR, filename)
             )
-
-            for f in os.listdir(
-                Config.DOCUMENTS_DIR
-            )
-
-            if (
-                os.path.splitext(f)[1].lower()
-                in
-                DocumentProcessor.SUPPORTED_EXTENSIONS
-            )
+            for filename in supported_filenames
         }
 
         existing_files = db.get_tracked_files()

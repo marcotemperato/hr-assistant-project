@@ -1,5 +1,7 @@
+import asyncio
 import os
 import shutil
+
 import chainlit as cl
 
 from document_processor import DocumentProcessor
@@ -8,6 +10,24 @@ from config import Config
 from utils import LLMHelper
 
 db = Database()
+
+_CHAT_ACTIONS = [
+    cl.Action(
+        name="show_db",
+        payload={"action": "show_db"},
+        label="📂 Mostra Database",
+    ),
+    cl.Action(
+        name="count_cv",
+        payload={"action": "count_cv"},
+        label="📊 Conta CV",
+    ),
+    cl.Action(
+        name="reset_db",
+        payload={"action": "reset_db"},
+        label="🗑️ Svuota Database",
+    ),
+]
 
 SYSTEM_PROMPT = """
 Sei un assistente HR per la selezione dei candidati.
@@ -80,6 +100,14 @@ async def upload_file(file):
     return f"❌ Errore elaborazione {file.name}"
 
 
+async def _await_document_sync():
+    sync_task = cl.user_session.get("sync_task")
+    if sync_task is not None and not sync_task.done():
+        wait_message = cl.Message(content="⏳ Indicizzazione CV in corso, attendo...")
+        await wait_message.send()
+        await sync_task
+
+
 @cl.on_chat_start
 async def start():
 
@@ -89,38 +117,56 @@ async def start():
         await cl.Message(content=f"❌ {error}").send()
         return
 
-    added, updated, removed = DocumentProcessor.process_documents(db)
-    sync_summary = ""
-    if any((added, updated, removed)):
-        sync_summary = (
-            f"\n\n📁 Sync CV: {added} aggiunti, "
-            f"{updated} aggiornati, {removed} rimossi."
-        )
-
     cl.user_session.set("messages", [])
+    cl.user_session.set("sync_done", False)
 
-    actions = [
-        cl.Action(
-            name="show_db",
-            payload={"action": "show_db"},
-            label="📂 Mostra Database",
-        ),
-        cl.Action(
-            name="count_cv",
-            payload={"action": "count_cv"},
-            label="📊 Conta CV",
-        ),
-        cl.Action(
-            name="reset_db",
-            payload={"action": "reset_db"},
-            label="🗑️ Svuota Database",
-        ),
-    ]
+    welcome = cl.Message(
+        content="✅ HR Assistant avviato. ⏳ Indicizzazione CV in corso...",
+        actions=_CHAT_ACTIONS,
+    )
+    await welcome.send()
 
-    await cl.Message(
-        content=f"✅ HR Assistant avviato correttamente.{sync_summary}",
-        actions=actions,
-    ).send()
+    async def complete_sync():
+        try:
+            added, updated, removed = await asyncio.to_thread(
+                DocumentProcessor.process_documents, db
+            )
+            tracked = db.get_tracked_files()
+            supported, skipped = DocumentProcessor.list_cv_filenames()
+            not_indexed = sorted(set(supported) - set(tracked.keys()))
+            sync_summary = ""
+            if any((added, updated, removed)):
+                sync_summary = (
+                    f"\n\n📁 Sync CV: {added} aggiunti, "
+                    f"{updated} aggiornati, {removed} rimossi."
+                )
+            if not_indexed:
+                sync_summary += (
+                    f"\n\n⚠️ Non indicizzati (contenuto vuoto o errore): "
+                    f"{', '.join(not_indexed)}"
+                )
+            if skipped:
+                sync_summary += (
+                    f"\n\n⚠️ File ignorati (formato non supportato): "
+                    f"{', '.join(skipped)}"
+                )
+            welcome.content = (
+                f"✅ HR Assistant pronto. {len(tracked)} CV indicizzati."
+                f"{sync_summary}"
+            )
+        except Exception as error:
+            welcome.content = (
+                "⚠️ HR Assistant avviato, ma indicizzazione fallita: "
+                f"{error}"
+            )
+        finally:
+            cl.user_session.set("sync_done", True)
+        await welcome.update()
+
+    cl.user_session.set(
+        "sync_task",
+        asyncio.create_task(complete_sync()),
+    )
 
 
 @cl.action_callback("show_db")
@@ -161,18 +207,24 @@ async def show_db(action):
 @cl.action_callback("count_cv")
 async def count_cv(action):
 
-    results = db.collection.get(
-        include=["metadatas"]
+    tracked = db.get_tracked_files()
+    supported, skipped = DocumentProcessor.list_cv_filenames()
+    not_indexed = sorted(set(supported) - set(tracked.keys()))
+
+    response = (
+        f"📊 CV indicizzati nel database: {len(tracked)}\n"
+        f"📁 File supportati in cartella: {len(supported)}"
     )
+    if not_indexed:
+        response += (
+            f"\n⚠️ Non indicizzati: {', '.join(not_indexed)}"
+        )
+    if skipped:
+        response += (
+            f"\n⚠️ File ignorati: {', '.join(skipped)}"
+        )
 
-    unique_documents = {
-        metadata["source"]
-        for metadata in results["metadatas"]
-    }
-
-    await cl.Message(
-        content=f"📊 CV presenti nel database: {len(unique_documents)}"
-    ).send()
+    await cl.Message(content=response).send()
 
 
 @cl.action_callback("reset_db")
@@ -187,6 +239,8 @@ async def reset_db(action):
 
 @cl.on_message
 async def handle_message(message: cl.Message):
+
+    await _await_document_sync()
 
     if message.elements:
 

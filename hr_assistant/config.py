@@ -8,9 +8,16 @@ PLACEHOLDER_KEY_MARKERS = ("sk-your", "your-openai", "changeme")
 
 
 class Config:
-    DOCUMENTS_DIR = "resumes"
+    _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    DOCUMENTS_DIR = os.getenv(
+        "RESUMES_DIR",
+        os.path.join(_PROJECT_ROOT, "resumes"),
+    )
     COLLECTION_NAME = "CVs"
-    PERSISTENT_DIR = "data/chromadb" #news
+    PERSISTENT_DIR = os.getenv(
+        "CHROMADB_DIR",
+        os.path.join(_PROJECT_ROOT, "data", "chromadb"),
+    )
     # Embedding
     MODEL_NAME = "text-embedding-3-small"
     OPENAI_KEY = os.getenv("OPENAI_API_KEY")

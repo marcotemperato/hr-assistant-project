@@ -29,8 +29,12 @@ per eseguire l'applicazione
 $ poetry install
 $ eval $(poetry env activate)
 
-$ chainlit run hr_assistant/__init__.py -w
+$ chainlit run hr_assistant/__init__.py
 ```
+
+> **Nota:** evita il flag `-w` (watch mode). Durante l'indicizzazione dei CV,
+> ChromaDB scrive file in `data/chromadb/` e il reload automatico può
+> interrompere la sessione chat prima che la risposta arrivi al browser.
 
 
 ## Esecuzione modelli in locale

@@ -48,7 +48,7 @@
             "--secondary-foreground": "0 0% 100%",
             "--muted": "250 10% 30%",
             "--muted-foreground": "250 10% 70%",
-            "--accent": "250 100% 55%",
+            "--accent": "35 100% 55%",
             "--accent-foreground": "0 0% 100%",
             "--destructive": "350 80% 55%",
             "--destructive-foreground": "0 0% 100%",
